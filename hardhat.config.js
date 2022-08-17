@@ -7,12 +7,12 @@ require("hardhat-gas-reporter");
 require("hardhat-contract-sizer");
 require("dotenv").config();
 
-const RINKEBY_URL = process.env.RINKEBY_URL;
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
+const RINKEBY_URL = "https://eth-rinkeby.alchemyapi.io/v2/qHe54-rytGu8yNd0iCKHs175dNHfl3PN";
+const PRIVATE_KEY = "a1a7b06aeba2ea6fb37c0a76723867cbec5a68e91cc44a0cca2f1eded7fac3b3";
+const ETHERSCAN_API_KEY = "KKV1ZT8UYTSDK6H2M3S8ZX586RF6XGY6QE";
 module.exports = {
     defaultNetwork: "hardhat",
-    network: {
+    networks: {
         hardhat: {
             chainId: 31337,
             blockConfirmations: 1,
