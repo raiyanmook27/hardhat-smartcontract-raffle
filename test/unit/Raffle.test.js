@@ -5,7 +5,7 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
 //if development chains is not local/hardhat
 !developmentChains.includes(network.name)
     ? describe.skip
-    : describe("Raffle Unit Tests", async function () {
+    : describe("Raffle Unit Tests", function () {
           let raffle, raffleContract, vrfCoordinatorV2Mock, interval, raffleEntranceFee, player;
           const chainId = network.config.chainId;
           beforeEach(async function () {
@@ -20,7 +20,7 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
               interval = await raffle.getInterval();
           });
 
-          describe("constructor", async function () {
+          describe("constructor", function () {
               it("Initializes the raffle correctly", async function () {
                   const raffleState = await raffle.getRaffleState();
                   assert.equal(raffleState.toString(), "0");
@@ -31,8 +31,8 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
               });
           });
 
-          describe("enter raffle", async function () {
-              it("reverts when you don't pay enough",  function () {
+          describe("enter raffle", function () {
+              it("reverts when you don't pay enough", async function () {
                   await expect(raffle.enterRaffle()).to.be.revertedWith("SendMoreToEnterRaffle");
               });
               it("records players when they enter", async function () {
@@ -64,7 +64,7 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
               });
           });
 
-          describe("checkUpKeep",  function () {
+          describe("checkUpKeep", function () {
               it("returns falls if user hasn't sent ETH", async function () {
                   await network.provider.send("evm_increaseTime", [interval.toNumber() + 1]);
                   await network.provider.request({ method: "evm_mine", params: [] });
@@ -73,7 +73,7 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
                   const { upkeepNeeded } = await raffle.callStatic.checkUpkeep("0x");
                   assert(!upkeepNeeded);
               });
-              it.only("returns false if raffle is not open", async function () {
+              it("returns false if raffle is not open", async function () {
                   await raffle.enterRaffle({ value: raffleEntranceFee });
                   await network.provider.send("evm_increaseTime", [interval.toNumber() + 1]);
                   await network.provider.request({ method: "evm_mine", params: [] });
@@ -86,7 +86,7 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
               });
               it("returns false if enough time hasn't passed", async () => {
                   await raffle.enterRaffle({ value: raffleEntranceFee });
-                  await network.provider.send("evm_increaseTime", [interval.toNumber() - 1]);
+                  await network.provider.send("evm_increaseTime", [interval.toNumber() + 1]);
                   await network.provider.request({ method: "evm_mine", params: [] });
                   const { upkeepNeeded } = await raffle.callStatic.checkUpkeep("0x"); // upkeepNeeded = (timePassed && isOpen && hasBalance && hasPlayers)
                   assert(!upkeepNeeded);
@@ -98,5 +98,49 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
                   const { upkeepNeeded } = await raffle.callStatic.checkUpkeep("0x"); // upkeepNeeded = (timePassed && isOpen && hasBalance && hasPlayers)
                   assert(upkeepNeeded);
               });
+          });
+          describe("performUpkeep", () => {
+              it("can only run if checkUpKeep is true", async function () {
+                  await raffle.enterRaffle({ value: raffleEntranceFee });
+                  await network.provider.send("evm_increaseTime", [interval.toNumber() + 1]);
+                  await network.provider.request({ method: "evm_mine", params: [] });
+                  const tx = await raffle.performUpkeep("0x");
+                  assert(tx);
+              });
+              it("reverts when checkupKeep is false", async function () {
+                  await expect(raffle.performUpkeep("0x")).to.be.revertedWith(
+                      "Raffle__UpkeepNotNeeded"
+                  );
+              });
+              it("updates a raffle states, emit an event, and calls the vrf coordinator", async function () {
+                  await raffle.enterRaffle({ value: raffleEntranceFee });
+                  await network.provider.send("evm_increaseTime", [interval.toNumber() + 1]);
+                  await network.provider.request({ method: "evm_mine", params: [] });
+                  const txResponse = await raffle.performUpkeep("0x");
+                  const txRec = await txResponse.wait(1);
+                  //you can get request id from the vrfcordinatorMock too --> try that out
+                  const requestId = txRec.events[1].args.requestId;
+                  const raffleState = await raffle.getRaffleState();
+                  assert(requestId.toNumber() > 0);
+                  assert(raffleState.toNumber() == 1);
+              });
+          });
+
+          describe("fulfillRandomWords", function () {
+              beforeEach(async function () {
+                  await raffle.enterRaffle({ value: raffleEntranceFee });
+                  await network.provider.send("evm_increaseTime", [interval.toNumber() + 1]);
+                  await network.provider.request({ method: "evm_mine", params: [] });
+              });
+              it.only("can only be called after performUpkeep", async () => {
+                  await expect(
+                      vrfCoordinatorV2Mock.fulfillRandomWords(0, raffle.address)
+                  ).to.be.revertedWith("nonexistent request");
+                  await expect(
+                      vrfCoordinatorV2Mock.fulfillRandomWords(1, raffle.address)
+                  ).to.be.revertedWith("nonexistent request");
+              });
+              //
+              it("picks a winner, resets the lottery and sends money", async () => {});
           });
       });
