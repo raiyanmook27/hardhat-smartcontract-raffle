@@ -132,7 +132,7 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
                   await network.provider.send("evm_increaseTime", [interval.toNumber() + 1]);
                   await network.provider.request({ method: "evm_mine", params: [] });
               });
-              it.only("can only be called after performUpkeep", async () => {
+              it("can only be called after performUpkeep", async () => {
                   await expect(
                       vrfCoordinatorV2Mock.fulfillRandomWords(0, raffle.address)
                   ).to.be.revertedWith("nonexistent request");
@@ -141,6 +141,68 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat-confi
                   ).to.be.revertedWith("nonexistent request");
               });
               //
-              it("picks a winner, resets the lottery and sends money", async () => {});
+              it.only("picks a winner, resets the lottery and sends money", async () => {
+                  const additionalEntrants = 3;
+                  const startingAccountIndex = 1;
+                  const accounts = await ethers.getSigners();
+                  for (
+                      let i = startingAccountIndex;
+                      i < additionalEntrants + startingAccountIndex;
+                      i++
+                  ) {
+                      const accountConnectedRaffle = raffle.connect(accounts[i]);
+                      await accountConnectedRaffle.enterRaffle({ value: raffleEntranceFee });
+                  }
+                  const startingTimeStamp = await raffle.getLastTimeStamp();
+
+                  //performupKeep(mock being Chainlink Keepers)
+                  //fulflRandomWords (mock chainlink VRF)
+                  //we have to simulate waiting for the fulfill to be called
+                  //listens to when Winner is picked.
+                  await new Promise(async (resolve, reject) => {
+                      raffle.once("WinnerPicked", async () => {
+                          console.log("found the events");
+                          try {
+                              const recentWinner = await raffle.getRecentWinner();
+                              console.log(recentWinner);
+                              console.log(accounts[2].address);
+                              console.log(accounts[0].address);
+                              console.log(accounts[1].address);
+
+                              //reset variables
+                              const raffleState = await raffle.getRaffleState();
+                              const endingTimeStamp = await raffle.getLastTimeStamp();
+                              const numPlayers = await raffle.getNumberOfPlayers();
+                              const winnerEndingBalance = await accounts[1].getBalance();
+                              assert.equal(numPlayers.toString(), "0");
+                              assert.equal(raffleState.toString(), "0");
+                              assert(endingTimeStamp > startingTimeStamp);
+
+                              assert.equal(
+                                  winnerEndingBalance.toString(),
+                                  winnerStartingBalance.add(
+                                      raffleEntranceFee
+                                          .mul(additionalEntrants)
+                                          .add(raffleEntranceFee)
+                                          .toString()
+                                  )
+                              );
+                          } catch (e) {
+                              reject(e);
+                          }
+                          resolve();
+                      });
+                      //setting up listener
+
+                      //below we will fire the event and the listenere will pick it up and resolve
+                      const tx = await raffle.performUpkeep("0x");
+                      const txRec = await tx.wait(1);
+                      const winnerStartingBalance = await accounts[1].getBalance();
+                      await vrfCoordinatorV2Mock.fulfillRandomWords(
+                          txRec.events[1].args.requestId,
+                          raffle.address
+                      );
+                  });
+              });
           });
       });
